@@ -1,0 +1,185 @@
+\documentclass[prodmode,acmtecs]{acmsmall} % Aptara syntax
+
+% Package to generate and customize Algorithm as per ACM style
+\usepackage[ruled]{algorithm2e}
+\renewcommand{\algorithmcfname}{ALGORITHM}
+\SetAlFnt{\small}
+\SetAlCapFnt{\small}
+\SetAlCapNameFnt{\small}
+\SetAlCapHSkip{0pt}
+\IncMargin{-\parindent}
+
+
+
+% DOI
+\doi{0000001.0000001}
+
+% Document starts
+\begin{document}
+
+% Title portion
+\title{Accelerating automated extraction of radio astronomical sources from observation data with GPU accelerators}
+\author{by Jarred de Beer}
+
+\begin{abstract}
+This document categorises various papers relating to identifying sources in datacubes.
+The intention is to select a source finding algorithm which can be optimised and rewritten for
+high performance GPU processing and maybe also parallelized on a cluster. A potential goal is that
+it can be run in production on HI surveys such as MEERKAT, helping the feasibility 
+in processing large volumes of data.
+\end{abstract}
+
+\maketitle
+
+% Head 1
+\section{Source finding Algorithms}
+
+A description and comparison of source finding algorithms is listed in \cite{popping2012comparison}.
+
+Most of these algorithms are based on Intensity thresholds,
+which observe every point in a datacube for sources. 
+SExtractor, SFind and Duchamp are good examples of these. 
+They all share an inherent limitation (see \cite{jurek2012characterised} for details).
+
+Alternatively, The Characterised Noise HI (CNHI), uses a different approach and does not suffer
+from this limitation. 
+I'd like to explore CNHI as the algorithm to parallelize, and will
+keep it in mind when listing the different papers. I'm holding thumbs Yaseen hasn't picked it out
+as well, otherwise I might need to refocus.
+
+\subsection{Sofia}
+
+SoFiA \cite{serra2015sofia} puts different source-finding algorithms together in a single piece
+of software. A summary of these are listed in \cite{koribalski2012source}.
+
+When merging sources SoFiA does not take into account their individual sizes, instead, merging
+is parameterised by the user.
+More specialised source finders are able to take sizes into account, such as Clumpfield \cite{williams1994determining}
+and BLOBCAT \cite{hales2012blobcat}.
+
+BLOBCAT \cite{hales2012blobcat} uses the flood fill algorithm to detect and catalogue blobs of pixels
+as sources.
+
+Sources are identified with the C++ implementation of the Lutz one pass algorithm \cite{lutz1980algorithm}
+by \cite{jurek2012characterised}. The Lutz one pass algorithm is also implemented in the Characterised
+noise HI source finder (CNHI) listed below, which we will focus on.
+
+\subsection{Scalable Source Finding Framework (SSoFF)}
+
+SSoFF details a method for constructing parallel source finders which can then make use of HPC architecture.
+Particular libraries and API's need to be used: MPI, MPI-IO and OpenMP. Converting serial programs
+may take significant effort.
+
+\subsection{DUCHAMP source finder}
+
+DUCHAMP \cite{whiting2012duchamp} is an Intensity threshold source finder.
+The noise suppression of DUCHAMP has been studied for multi-threading,
+SIMD, and memory-management on desktop computers \cite{scottBadenhorst}. The Selavy project
+\cite{whiting2012source} is a parallelized implementation of DUCHAMP, and might be useful.
+
+In the context of CPU processing, Scott's paper \cite{scottBadenhorst} notes that the combination of SIMD and hyperthreading
+is terrible for performance. However, in the context of GPU processing, \cite{mahesri2008tradeoffs}
+finds that MIMD has superior performance to SIMD. This is useful since we're considering GPU processing.
+
+
+\subsection{Gaussian fitting algorithms}
+
+Gaussian fitting algorithms \cite{hancock2012compact} are related to Selavy and of possible interest.
+
+\subsection{Monte Carlo method}
+
+The Monte Carlo method \cite{allison2011application} is a Bayesian model fitting.
+This is an extension to Gaussian models. It does not use a 3D source finder
+such as DUCHAMP, and it may be relevant to CNHI.
+
+\subsection{Multi Scale Multi Frequency Synthesis Algorithm}
+
+Also related to Selavy, the Multi Scale Multi Frequency Synthesis Algorithm will be used in
+the imaging pipeline of the Australian Square Kilometre Array Pathfinder (ASKAP) \cite{rau2009advances}.
+
+\subsection{CNHI source finder}
+
+The Characterised noise HI source finder (CNHI) \cite{jurek2012characterised} 
+is an alternative to Intensity based source finders.
+
+CNHI uses Matched filtering, which is known as the best method for automatically detecting sources.
+Like SoFiA, it implements the Lutz one-pass algorithm with a novel, 
+sparse representation that has high compression.
+
+A limitation of Intensity based source finders, which CNHI does not suffer from,
+is that they struggle to detect sources when the flux is spread over extra voxels.
+CNHI has its own limitations though.
+
+There are three core concepts behind the CNHI algorithm:
+
+\begin{itemize}
+\item Datacubes can be treated as a bundle of HI spectra (ideal for parallelization), as opposed to a collection of voxels.
+\item Contiguous blocks of voxels, rather than individual sources, should be tested for sources.
+\item Sources are detected where regions do not appear as noise (the inverse to shape based algorithms)
+\end{itemize}
+
+Noise is detected with Comparative statistical tests:
+the Kolmogorov-Smirnov test \cite{kendall1979advanced} and the Kuiper test \cite{kuiper1960tests}.
+
+CNHI's completeness, reliability, and performance is presented in 
+\cite{popping2012comparison}, with a complementary comparison discussed in \cite{westmeier2012basic}. 
+Its terminology is defined and measured in \cite{popping2012comparison}.
+
+\subsection{The Gamma-Finder}
+
+The Gamma-Finder \cite{boyce2003gammafinder} estimates noise variance, known as the Gamma Statistic.
+A signal-to-noise ratio is then used to clip the data. There are no parameters to the Gamma-Finder.
+
+\subsection{2D-1D Wavelet Reconstruction finder}
+
+2D-1D Wavelet Reconstruction \cite{floer20122d} performs a wavelet transform in all planes
+of the cube and a 1D wavelet transform at each pixel.
+
+\subsection{Smooth plus Clip source finder}
+
+This algorithm optimises the signal-to-noise ratio of objects in a cube. It looks for sources
+in both the original and the smoothed cube. Smoothing can be done on the sky, velocity, or 
+all three axes. \cite{serra2012atlas3d}
+
+\subsection{Parallel Gaussian Source Finder}
+
+The Parallel gaussian Source Finder is built on SSoFF \cite{westerlund2014framework} for parallelism.
+
+\subsection{GPU-accelerated Filter-based source finder}
+
+So far i've only identified \cite{westerlund2015performance} as having ported a source finding
+algorithm onto the GPU, so this paper will also be looked at closely.
+
+It states that GPUs are a good fit for datacubes, but that separate effort is needed to port any source
+finding algorithm onto the GPU. This effort implies that porting an algorithm to the GPU 
+would be of direct benefit to the community, and is why we are choosing to do so.
+
+The filtering section takes up to 70\% of the running time, while other time
+consuming tasks are statistics calculations and reading image and weights data.
+
+\cite{westerlund2015performance} Parallelizes a filtering algorithm based on CUDA, OpenCL,
+OpenMP and OpenMPI. It lists the following as potential future work, which could form areas 
+of meaningful contribution:
+
+\begin{itemize}
+\item Porting the statistics functions to GPU as they contain a significant portion of run time.
+\item Adapting the program to process part of a nodes image data while the rest is being read in.
+\item Modify the current implementation to perform additional work with less communication.
+\item Add automatic configuration for best thread topology and performance.
+\item Port any other algorithms added to SSoFF onto the GPU.
+\end{itemize}
+
+
+\subsection{Additional GPU considerations}
+
+In the paper \cite{sung2014place} an algorithm for the in-place matrix transposition
+on GPUs is discussed. DUCHAMP uses transposition to keep the memory accesses coherent in the denoising
+process and may also be useful for the contiguous blocks of voxels searched by CNHI.
+
+\bibliographystyle{ACM-Reference-Format-Journals}
+\bibliography{writeup}
+
+
+\end{document}
+
+
